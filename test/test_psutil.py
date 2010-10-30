@@ -411,7 +411,6 @@ class TestCase(unittest.TestCase):
         else:
             self.assertEqual(psutil.Process(sproc.pid).name, os.path.basename(PYTHON))
 
-
     def test_uid(self):
         sproc = get_test_subprocess()
         wait_for_pid(sproc.pid)
