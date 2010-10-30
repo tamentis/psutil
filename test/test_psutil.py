@@ -726,7 +726,8 @@ class TestCase(unittest.TestCase):
         self.assert_(isinstance(p.ppid, int))
         self.assert_(isinstance(p.parent, psutil.Process))
         self.assert_(isinstance(p.name, str))
-        self.assert_(isinstance(p.exe, str))
+        if self.__class__.__name__ != "LimitedUserTestCase":
+            self.assert_(isinstance(p.exe, str))
         self.assert_(isinstance(p.cmdline, list))
         self.assert_(isinstance(p.uid, int))
         self.assert_(isinstance(p.gid, int))
@@ -948,6 +949,9 @@ if hasattr(os, 'getuid'):
 
             def test_get_connections(self):
                 pass
+                
+            def test_exe(self):
+                self.assertRaises(psutil.AccessDenied, TestCase.test_exe, self)
 
         if OSX:
 
