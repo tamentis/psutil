@@ -411,6 +411,7 @@ class TestCase(unittest.TestCase):
         else:
             self.assertEqual(psutil.Process(sproc.pid).name, os.path.basename(PYTHON))
 
+
     def test_uid(self):
         sproc = get_test_subprocess()
         wait_for_pid(sproc.pid)
@@ -725,8 +726,7 @@ class TestCase(unittest.TestCase):
         self.assert_(isinstance(p.ppid, int))
         self.assert_(isinstance(p.parent, psutil.Process))
         self.assert_(isinstance(p.name, str))
-        if self.__class__.__name__ != "LimitedUserTestCase":
-            self.assert_(isinstance(p.exe, str))
+        self.assert_(isinstance(p.exe, str))
         self.assert_(isinstance(p.cmdline, list))
         self.assert_(isinstance(p.uid, int))
         self.assert_(isinstance(p.gid, int))
@@ -862,16 +862,9 @@ class TestCase(unittest.TestCase):
         elif OSX:
             self.assertEqual(p.name, 'kernel_task')
 
-        if os.name == 'posix':
-            self.assertEqual(p.uid, 0)
-            self.assertEqual(p.gid, 0)
-        else:
-            self.assertEqual(p.uid, -1)
-            self.assertEqual(p.gid, -1)
-
-        self.assertEqual(p.ppid, 0)
-        self.assertEqual(p.exe, "")
-        self.assertEqual(p.cmdline, [])
+        # use __str__ to access all common Process properties to check
+        # that nothing strange happens
+        str(p)
 
         if OSX : #and os.geteuid() != 0:
             self.assertRaises(psutil.AccessDenied, p.get_memory_info)
@@ -880,7 +873,9 @@ class TestCase(unittest.TestCase):
             p.get_memory_info()
 
         # username property
-        if POSIX:
+        if LINUX:
+            self.assertEqual(p.username, 'root')
+        elif BSD or OSX:
             self.assertEqual(p.username, 'root')
         elif WINDOWS:
             self.assertEqual(p.username, 'NT AUTHORITY\\SYSTEM')
@@ -953,9 +948,6 @@ if hasattr(os, 'getuid'):
 
             def test_get_connections(self):
                 pass
-
-            def test_exe(self):
-                self.assertRaises(psutil.AccessDenied, TestCase.test_exe, self)
 
         if OSX:
 

@@ -23,6 +23,9 @@ __all__ = [
     "used_virtmem", "cpu_times", "cpu_percent",
     ]
 
+
+
+
 import sys
 import os
 import time
@@ -30,9 +33,9 @@ import signal
 import warnings
 import errno
 try:
-    import pwd
+    import pwd, grp
 except ImportError:
-    pwd = None
+    pwd = grp = None
 
 from psutil.error import Error, NoSuchProcess, AccessDenied
 
@@ -92,6 +95,32 @@ class CPUTimes:
             yield getattr(self, attr)
 
 
+class _ProcessInfo(object):
+    """Class that allows the process information to be passed between
+    external code and psutil.  Used directly by the Process class.
+    """
+    __slots__ = ["pid", "ppid", "name", "exe", "cmdline", "uid", "gid",
+                 "create", "username"]
+
+    def __init__(self, pid, ppid=None, name=None, exe=None, cmdline=None,
+                       uid=None, gid=None):
+        self.pid = pid
+        self.ppid = ppid
+        self.name = name
+        self.exe = exe
+        self.cmdline = cmdline
+        # if we have the cmdline but not the exe, figure it out from argv[0]
+        if cmdline and not exe:
+            if hasattr(os, 'access') and hasattr(os, 'X_OK'):
+                _exe = os.path.realpath(cmdline[0])
+                if os.path.isfile(_exe) and os.access(_exe, os.X_OK):
+                    self.exe = _exe
+        self.uid = uid
+        self.gid = gid
+        self.create = None
+        self.username = None
+
+
 class Process(object):
     """Represents an OS process."""
 
@@ -103,10 +132,11 @@ class Process(object):
             raise ValueError("An integer is required")
         if not pid_exists(pid):
             raise NoSuchProcess(pid, None, "no process found with PID %s" % pid)
-        self._pid = pid
         # platform-specific modules define an PlatformProcess
         # implementation class
         self._platform_impl = PlatformProcess(pid)
+        self._procinfo = _ProcessInfo(pid)
+        self.is_proxy = True
         # try to init CPU times, if it raises AccessDenied then suppress
         # it so it won't interrupt the constructor. First call to
         # get_cpu_percent() will trigger the AccessDenied exception
@@ -138,22 +168,43 @@ class Process(object):
         return "<%s at %s>" % (self.__str__(), id(self))
 
     def __eq__(self, other):
-        """Test for equality with another Process object based on pid
-        and creation time.
-        """
-        h1 = (self.pid, self.create_time)
+        """Test for equality with another Process object based on PID
+        and creation time."""
+        # Avoid to use self.create_time directly to avoid caching in
+        # case kill() gets called before create_time resulting in
+        # NoSuchProcess not being raised (see issue 77):
+        h1 = (self.pid, self._procinfo.create or \
+                        self._platform_impl.get_process_create_time())
         h2 = (other.pid, other.create_time)
         return h1 == h2
+
+    def deproxy(self):
+        """Used internally by Process properties. The first call to
+        deproxy() initializes the _ProcessInfo object in self._procinfo
+        with process data read from platform-specific module's
+        get_process_info() method.
+
+        This method becomes a NO-OP after the first property is accessed.
+        Property data is filled in from the _ProcessInfo object created,
+        and further calls to deproxy() simply return immediately without
+        calling get_process_info().
+        """
+        if self.is_proxy:
+            # get_process_info returns a tuple we use as the arguments
+            # to the _ProcessInfo constructor
+            self._procinfo = _ProcessInfo(*self._platform_impl.get_process_info())
+            self.is_proxy = False
 
     @property
     def pid(self):
         """The process pid."""
-        return self._pid
+        return self._procinfo.pid
 
     @property
     def ppid(self):
         """The process parent pid."""
-        return self._platform_impl.get_process_ppid()
+        self.deproxy()
+        return self._procinfo.ppid
 
     @property
     def parent(self):
@@ -166,33 +217,14 @@ class Process(object):
     @property
     def name(self):
         """The process name."""
-        name = self._platform_impl.get_process_name()
-        if os.name == 'posix':
-            # On UNIX the name gets truncated to the first 15 characters.
-            # If it matches the first part of the cmdline we return that
-            # one instead because it's usually more explicative.
-            # Examples are "gnome-keyring-d" vs. "gnome-keyring-daemon".
-            cmdline = self.cmdline
-            if cmdline:
-                extended_name = os.path.basename(cmdline[0])
-                if extended_name.startswith(name):
-                    name = extended_name
-        # XXX - perhaps needs refactoring
-        self._platform_impl._process_name = name
-        return name
+        self.deproxy()
+        return self._procinfo.name
 
     @property
     def exe(self):
         """The process executable as an absolute path name."""
-        exe = self._platform_impl.get_process_exe()
-        # if we have the cmdline but not the exe, figure it out from argv[0]
-        if not exe:
-            cmdline = self.cmdline
-            if cmdline and hasattr(os, 'access') and hasattr(os, 'X_OK'):
-                _exe = os.path.realpath(cmdline[0])
-                if os.path.isfile(_exe) and os.access(_exe, os.X_OK):
-                    return _exe
-        return exe
+        self.deproxy()
+        return self._procinfo.exe
 
     @property
     def path(self):
@@ -203,35 +235,40 @@ class Process(object):
     @property
     def cmdline(self):
         """The command line process has been called with."""
-        return self._platform_impl.get_process_cmdline()
+        self.deproxy()
+        return self._procinfo.cmdline
 
     @property
     def uid(self):
         """The real user id of the current process."""
-        return self._platform_impl.get_process_uid()
+        self.deproxy()
+        return self._procinfo.uid
 
     @property
     def gid(self):
         """The real group id of the current process."""
-        return self._platform_impl.get_process_gid()
+        self.deproxy()
+        return self._procinfo.gid
 
     @property
     def username(self):
         """The name of the user that owns the process."""
-        if os.name == 'posix':
-            if pwd is None:
-                # might happen on compiled-from-sources python
-                raise ImportError("requires pwd module shipped with standard python")
-            return pwd.getpwuid(self.uid).pw_name
+        if self._procinfo.username is not None:
+            return self._procinfo.username
+        if pwd is not None:
+            self._procinfo.username = pwd.getpwuid(self.uid).pw_name
         else:
-            return self._platform_impl.get_process_username()
+            self._procinfo.username =  self._platform_impl.get_process_username()
+        return self._procinfo.username
 
     @property
     def create_time(self):
         """The process creation time as a floating point number
         expressed in seconds since the epoch, in UTC.
         """
-        return self._platform_impl.get_process_create_time()
+        if self._procinfo.create is None:
+            self._procinfo.create = self._platform_impl.get_process_create_time()
+        return self._procinfo.create
 
     # available for Windows and Linux only
     if hasattr(PlatformProcess, "get_process_cwd"):
@@ -246,16 +283,8 @@ class Process(object):
         objects.
         """
         if not self.is_running():
-            name = self._platform_impl._process_name
-            raise NoSuchProcess(self.pid, name)
-        retlist = []
-        for proc in process_iter():
-            try:
-                if proc.ppid == self.pid:
-                    retlist.append(proc)
-            except NoSuchProcess:
-                pass
-        return retlist
+            raise NoSuchProcess(self.pid, self._procinfo.name)
+        return [p for p in process_iter() if p.ppid == self.pid]
 
     def get_cpu_percent(self):
         """Compare process times to system time elapsed since last call
@@ -339,17 +368,15 @@ class Process(object):
         # safety measure in case the current process has been killed in
         # meantime and the kernel reused its PID
         if not self.is_running():
-            name = self._platform_impl._process_name
-            raise NoSuchProcess(self.pid, name)
+            raise NoSuchProcess(self.pid, self._procinfo.name)
         if os.name == 'posix':
             try:
                 os.kill(self.pid, sig)
             except OSError, err:
-                name = self._platform_impl._process_name
                 if err.errno == errno.ESRCH:
-                    raise NoSuchProcess(self.pid, name)
+                    raise NoSuchProcess(self.pid, self._procinfo.name)
                 if err.errno == errno.EPERM:
-                    raise AccessDenied(self.pid, name)
+                    raise AccessDenied(self.pid, self._procinfo.name)
                 raise
         else:
             if sig == signal.SIGTERM:
@@ -362,8 +389,7 @@ class Process(object):
         # safety measure in case the current process has been killed in
         # meantime and the kernel reused its PID
         if not self.is_running():
-            name = self._platform_impl._process_name
-            raise NoSuchProcess(self.pid, name)
+            raise NoSuchProcess(self.pid, self._procinfo.name)
         # windows
         if hasattr(self._platform_impl, "suspend_process"):
             self._platform_impl.suspend_process()
@@ -376,8 +402,7 @@ class Process(object):
         # safety measure in case the current process has been killed in
         # meantime and the kernel reused its PID
         if not self.is_running():
-            name = self._platform_impl._process_name
-            raise NoSuchProcess(self.pid, name)
+            raise NoSuchProcess(self.pid, self._procinfo.name)
         # windows
         if hasattr(self._platform_impl, "resume_process"):
             self._platform_impl.resume_process()
@@ -396,8 +421,7 @@ class Process(object):
         # safety measure in case the current process has been killed in
         # meantime and the kernel reused its PID
         if not self.is_running():
-            name = self._platform_impl._process_name
-            raise NoSuchProcess(self.pid, name)
+            raise NoSuchProcess(self.pid, self._procinfo.name)
         if os.name == 'posix':
             self.send_signal(signal.SIGKILL)
         else:

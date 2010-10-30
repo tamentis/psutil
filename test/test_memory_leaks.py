@@ -35,8 +35,8 @@ class TestProcessObjectLeaks(unittest.TestCase):
 
     def execute(self, method, *args, **kwarks):
         # step 1
-        p = psutil.Process(os.getpid())
-        for x in xrange(LOOPS):            
+        for x in xrange(LOOPS):
+            p = psutil.Process(os.getpid())
             obj = getattr(p, method)
             if callable(obj):
                 retvalue = obj(*args, **kwarks)
@@ -47,8 +47,8 @@ class TestProcessObjectLeaks(unittest.TestCase):
         rss1 = psutil.Process(os.getpid()).get_memory_info()[0]
 
         # step 2
-        p = psutil.Process(os.getpid())
-        for x in xrange(LOOPS):            
+        for x in xrange(LOOPS):
+            p = psutil.Process(os.getpid())
             obj = getattr(p, method)
             if callable(obj):
                 retvalue = obj(*args, **kwarks)
@@ -62,21 +62,10 @@ class TestProcessObjectLeaks(unittest.TestCase):
         difference = rss2 - rss1
         if difference > TOLERANCE:
             self.fail("rss1=%s, rss2=%s, difference=%s" %(rss1, rss2, difference))
-       
-    def test_name(self):
-        self.execute('name')
-        
-    def test_cmdline(self):
-        self.execute('cmdline')
-        
-    def test_ppid(self):
-        self.execute('ppid')
-        
-    def test_uid(self):
-        self.execute('uid')
 
-    def test_uid(self):
-        self.execute('gid')
+    def test__str__(self):
+        # includes name, ppid, path, cmdline, uid, gid properties
+        self.execute('__str__')
 
     @skipIf(POSIX)
     def test_username(self):
