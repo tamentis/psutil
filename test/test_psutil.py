@@ -863,8 +863,13 @@ class TestCase(unittest.TestCase):
         elif OSX:
             self.assertEqual(p.name, 'kernel_task')
 
-        self.assertEqual(p.uid, 0)
-        self.assertEqual(p.gid, 0)
+        if os.name == 'posix':
+            self.assertEqual(p.uid, 0)
+            self.assertEqual(p.gid, 0)
+        else:
+            self.assertEqual(p.uid, -1)
+            self.assertEqual(p.gid, -1)
+
         self.assertEqual(p.ppid, 0)
         self.assertEqual(p.exe, "")
         self.assertEqual(p.cmdline, [])
@@ -875,7 +880,7 @@ class TestCase(unittest.TestCase):
         else:
             p.get_memory_info()
 
-        # username property        
+        # username property
         if POSIX:
             self.assertEqual(p.username, 'root')
         elif WINDOWS:
@@ -949,7 +954,7 @@ if hasattr(os, 'getuid'):
 
             def test_get_connections(self):
                 pass
-                
+
             def test_exe(self):
                 self.assertRaises(psutil.AccessDenied, TestCase.test_exe, self)
 
