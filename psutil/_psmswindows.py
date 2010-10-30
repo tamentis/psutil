@@ -107,6 +107,8 @@ class WindowsProcess(object):
     def get_process_exe(self):
         # no such thing as "exe" on BSD; it will maybe be determined
         # later from cmdline[0]
+        if not pid_exists(self.pid):
+            raise NoSuchProcess(self.pid, self._process_name)
         return ""
 
     @wrap_exceptions

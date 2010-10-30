@@ -499,6 +499,7 @@ static PyObject* get_process_info(PyObject* self, PyObject* args)
 static PyObject*
 get_process_name(PyObject* self, PyObject* args) {
 	long pid;
+    int pid_return;
     PyObject* name;
 
 	if (! PyArg_ParseTuple(args, "l", &pid))
@@ -509,6 +510,14 @@ get_process_name(PyObject* self, PyObject* args) {
     }
     else if (pid == 4) {
         return Py_BuildValue("s", "System");
+    }
+
+    pid_return = pid_is_running(pid);
+    if (pid_return == 0) {
+        return NoSuchProcess();
+    }
+    if (pid_return == -1) {
+        return NULL;
     }
 
     name = get_name(pid);
@@ -524,12 +533,21 @@ get_process_name(PyObject* self, PyObject* args) {
 static PyObject*
 get_process_ppid(PyObject* self, PyObject* args) {
 	long pid;
+    int pid_return;
     PyObject* ppid;
 
 	if (! PyArg_ParseTuple(args, "l", &pid))
 	    return NULL;
     if ((pid == 0) || (pid == 4))
 	    return Py_BuildValue("l", 0);
+
+    pid_return = pid_is_running(pid);
+    if (pid_return == 0) {
+        return NoSuchProcess();
+    }
+    if (pid_return == -1) {
+        return NULL;
+    }
 
     ppid = get_ppid(pid);
     if (ppid == NULL)
@@ -543,12 +561,21 @@ get_process_ppid(PyObject* self, PyObject* args) {
 static PyObject*
 get_process_cmdline(PyObject* self, PyObject* args) {
 	long pid;
+    int pid_return;
     PyObject* arglist;
 
 	if (! PyArg_ParseTuple(args, "l", &pid))
 	    return NULL;
     if ((pid == 0) || (pid == 4))
 	    return Py_BuildValue("[]");
+
+    pid_return = pid_is_running(pid);
+    if (pid_return == 0) {
+        return NoSuchProcess();
+    }
+    if (pid_return == -1) {
+        return NULL;
+    }
 
     // May fail any of several ReadProcessMemory calls etc. and not indicate
     // a real problem so we ignore any errors and just live without commandline
