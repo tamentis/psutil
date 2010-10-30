@@ -167,17 +167,17 @@ class Process(object):
     def name(self):
         """The process name."""
         name = self._platform_impl.get_process_name()
-        # On UNIX the name gets truncated to the first 15 characters.
-        # If it matches the first part of the cmdline we return that 
-        # one instead because it's usually more explicative.
-        # Examples are "gnome-keyring-d" vs. "gnome-keyring-daemon".
         if os.name == 'posix':
+            # On UNIX the name gets truncated to the first 15 characters.
+            # If it matches the first part of the cmdline we return that 
+            # one instead because it's usually more explicative.
+            # Examples are "gnome-keyring-d" vs. "gnome-keyring-daemon".
             cmdline = self.cmdline
             if cmdline:
                 extended_name = os.path.basename(cmdline[0])
                 if extended_name.startswith(name):
-                    return extended_name
-        # XXX - needs refactoring
+                    name = extended_name
+        # XXX - perhaps needs refactoring
         self._platform_impl._process_name = name
         return name
 
