@@ -863,9 +863,11 @@ class TestCase(unittest.TestCase):
         elif OSX:
             self.assertEqual(p.name, 'kernel_task')
 
-        # use __str__ to access all common Process properties to check
-        # that nothing strange happens
-        str(p)
+        self.assertEqual(p.uid, 0)
+        self.assertEqual(p.gid, 0)
+        self.assertEqual(p.ppid, 0)
+        self.assertEqual(p.exe, "")
+        self.assertEqual(p.cmdline, [])
 
         if OSX : #and os.geteuid() != 0:
             self.assertRaises(psutil.AccessDenied, p.get_memory_info)
@@ -873,10 +875,8 @@ class TestCase(unittest.TestCase):
         else:
             p.get_memory_info()
 
-        # username property
-        if LINUX:
-            self.assertEqual(p.username, 'root')
-        elif BSD or OSX:
+        # username property        
+        if POSIX:
             self.assertEqual(p.username, 'root')
         elif WINDOWS:
             self.assertEqual(p.username, 'NT AUTHORITY\\SYSTEM')
