@@ -70,6 +70,15 @@ elif sys.platform.lower().startswith("freebsd"):
                             libraries=["devstat"],
                             ),
                   posix_extension]
+# OpenBSD
+elif sys.platform.lower().startswith("openbsd"):
+    extensions = [Extension('_psutil_bsd',
+                            sources = ['psutil/_psutil_openbsd.c',
+                                       'psutil/_psutil_common.c',
+                                       'psutil/arch/openbsd/process_info.c'],
+                            libraries=["kvm"],
+                            ),
+                  posix_extension]
 # Linux
 elif sys.platform.lower().startswith("linux"):
     extensions = [Extension('_psutil_linux',
